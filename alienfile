@@ -1,0 +1,95 @@
+# -*- mode: perl; -*-
+use alienfile;
+use feature 'say';
+use Path::Tiny 'path';
+
+my $r3_series = qr/(3\.[0-9]+\.[0-9]+)/;
+
+plugin 'PkgConfig' => ( pkg_name => 'libRmath' );
+
+plugin 'Probe::CommandLine' => (
+    command => 'R',
+    args    => [qw{CMD config --version}],
+    match   => qr/R configuration information retrieval script/,
+    version => $r3_series,
+    secondary => 1,
+);
+
+plugin 'Probe::CommandLine' => (
+    command => 'R',
+    args    => [qw{CMD config --all}],
+    match   => qr/LIBnn/,
+    secondary => 1,
+);
+
+share {
+    start_url 'https://cran.r-project.org/src/base/R-3/';
+
+    plugin Download => ( 
+        filter        => qr/R\-$r3_series/,
+        version       => $r3_series, 
+        bootstrap_ssl => 1 );
+
+    plugin 'Prefer::BadVersion' => '3.4.2';
+
+    plugin Extract => ( format => 'tar.gz' );
+
+    plugin 'Build::Autoconf' => (with_pic => 1);
+
+    meta_prop->{out_of_source} = 1;
+
+    my @configure_opts = (
+        '--enable-strict-barrier',
+        '--enable-R-shlib',
+        '--enable-BLAS-shlib',
+        '--enable-threads=posix',
+        '--enable-R-static-lib',
+        '--enable-static',
+
+        '--with-x',
+        '--with-cairo',
+        '--with-libpng',
+        '--with-jpeglib',
+
+#        "--with-tcl-config=/usr/lib64/tclConfig.sh",
+#        "--with-tk-config=/usr/lib64/tkConfig.sh",
+        );
+
+    build [
+        join(' ', '%{configure}', @configure_opts),
+#        '%{make} DESTDIR=',
+        '%{make} -C src -C nmath -C standalone shared',
+        '%{make} -C src -C nmath -C standalone static CFLAGS=-fpic',
+        '%{make} -C src -C nmath -C standalone install',
+#        '%{make} install',
+        ];
+
+    plugin 'Gather::IsolateDynamic';
+
+    after gather => sub {
+        my $build   = shift;
+        my $prefix  = $build->runtime_prop->{prefix};
+        my $libpath = path($prefix)->child('lib');
+        my $dynpath = path($prefix)->child('dynamic');
+
+        $build->runtime_prop->{libs} =~ s{-L$libpath}{-L$dynpath};
+    };
+};
+
+=encoding utf8
+
+=head1 NAME
+
+alienfile - alienfile for Alien::libRmath
+
+=head1 SYNOPSIS
+
+Development
+
+  af install --dry-run
+
+=head1 DESCRIPTION
+
+
+
+=cut
